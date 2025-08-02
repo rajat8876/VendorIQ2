@@ -61,8 +61,8 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API routes will be added here
-app.use('/api', (req, res) => {
+// API info route (specific path to avoid conflicts)
+app.get('/api', (req, res) => {
   res.json({
     success: true,
     message: 'VendorIQ API v1.0.0',

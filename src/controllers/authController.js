@@ -9,10 +9,13 @@ const redis = require('../config/redis');
 const { generateOTP } = require('../utils/helpers');
 const { Op } = require('sequelize');
 
+// In-memory fallback for OTP storage when Redis is unavailable
+const otpStorage = new Map();
+
 class AuthController {
   async register(req, res) {
     try {
-      const { business_name, contact_person, phone, email, location, industries } = req.body;
+      const { business_name, contact_person, phone, email, location, industries, password } = req.body;
       
       // Check if user already exists
       const existingUser = await User.findOne({
@@ -36,6 +39,7 @@ class AuthController {
         email,
         location,
         industries,
+        password, // Include password if provided
         trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days trial
       });
       
@@ -82,12 +86,29 @@ class AuthController {
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       
-      await redis.setex(`otp_${phone}`, 300, JSON.stringify({
-        otp,
-        expires_at: expiresAt
-      }));
+      // Store OTP in Redis or fallback to in-memory storage
+      if (redis.isConnected) {
+        await redis.setex(`otp_${phone}`, 300, JSON.stringify({
+          otp,
+          expires_at: expiresAt
+        }));
+      } else {
+        // Fallback to in-memory storage
+        console.log('⚠️  Redis unavailable, using in-memory OTP storage');
+        otpStorage.set(`otp_${phone}`, {
+          otp,
+          expires_at: expiresAt
+        });
+        
+        // Clean up expired OTPs from memory
+        setTimeout(() => {
+          otpStorage.delete(`otp_${phone}`);
+        }, 300000); // 5 minutes
+      }
       
       await smsService.sendOTP(phone, otp);
+      
+      console.log(`📱 OTP generated for ${phone}: ${otp}`);
       
       res.json({
         success: true,
@@ -107,16 +128,30 @@ class AuthController {
     try {
       const { phone, otp } = req.body;
       
-      const cachedOtp = await redis.get(`otp_${phone}`);
+      // Try to get OTP from Redis first, then fallback to in-memory storage
+      let otpData = null;
       
-      if (!cachedOtp) {
+      if (redis.isConnected) {
+        const cachedOtp = await redis.get(`otp_${phone}`);
+        if (cachedOtp) {
+          otpData = JSON.parse(cachedOtp);
+        }
+      }
+      
+      // If not found in Redis or Redis unavailable, check in-memory storage
+      if (!otpData) {
+        const memoryOtp = otpStorage.get(`otp_${phone}`);
+        if (memoryOtp) {
+          otpData = memoryOtp;
+        }
+      }
+      
+      if (!otpData) {
         return res.status(400).json({
           success: false,
           message: 'OTP expired or invalid'
         });
       }
-      
-      const otpData = JSON.parse(cachedOtp);
       
       if (otpData.otp !== otp) {
         return res.status(400).json({
@@ -152,8 +187,11 @@ class AuthController {
         { expiresIn: '7d' }
       );
       
-      // Clear OTP
-      await redis.del(`otp_${phone}`);
+      // Clear OTP from both Redis and in-memory storage
+      if (redis.isConnected) {
+        await redis.del(`otp_${phone}`);
+      }
+      otpStorage.delete(`otp_${phone}`);
       
       res.json({
         success: true,

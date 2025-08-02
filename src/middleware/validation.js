@@ -10,7 +10,8 @@ const registrationSchema = Joi.object({
   phone: Joi.string().pattern(/^\+91[0-9]{10}$/).required(),
   email: Joi.string().email().required(),
   location: Joi.string().min(2).max(255).required(),
-  industries: Joi.array().items(Joi.string()).min(1).required()
+  industries: Joi.array().items(Joi.string()).min(1).required(),
+  password: Joi.string().min(6).optional() // Optional password for registration
 });
 
 // OTP validation schema
