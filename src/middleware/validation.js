@@ -52,11 +52,39 @@ const sendOtpSchema = Joi.object({
   phone: Joi.string().pattern(/^\+91[0-9]{10}$/).required()
 });
 
-// Export validation middlewares
+// Service Request validation schema
+const serviceRequestSchema = Joi.object({
+  title: Joi.string().min(5).max(255).required(),
+  description: Joi.string().min(10).max(5000).required(),
+  industry_id: Joi.number().integer().positive().optional(),
+  category_id: Joi.number().integer().positive().optional(),
+  location: Joi.string().min(2).max(255).required(),
+  budget: Joi.string().max(100).optional(),
+  deadline: Joi.date().iso().greater('now').optional(),
+  custom_fields: Joi.object().optional()
+});
+
+// Request Response validation schema
+const responseSchema = Joi.object({
+  message: Joi.string().min(10).max(2000).required(),
+  contact_info: Joi.string().min(5).max(255).required(),
+  price: Joi.string().max(100).optional(),
+  timeline: Joi.string().max(255).optional(),
+  attachments: Joi.array().items(Joi.string()).optional()
+});
+
+// Status update validation schema
+const statusUpdateSchema = Joi.object({
+  status: Joi.string().valid('open', 'fulfilled', 'closed').required()
+});
+
 module.exports = {
   validateRegistration: validate(registrationSchema),
   validateOTP: validate(otpSchema),
   validateLogin: validate(loginSchema),
   validateSendOtp: validate(sendOtpSchema),
+  validateServiceRequest: validate(serviceRequestSchema),
+  validateResponse: validate(responseSchema),
+  validateStatusUpdate: validate(statusUpdateSchema),
   validate
 };
