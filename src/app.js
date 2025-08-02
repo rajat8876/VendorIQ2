@@ -10,6 +10,12 @@ const redis = require('./config/redis');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const requestRoutes = require('./routes/requests');
+const industryRoutes = require('./routes/industries');
+const fileRoutes = require('./routes/files');
+const paymentRoutes = require('./routes/payments');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +40,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/requests', requestRoutes);
+app.use('/api/industries', industryRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Basic health check route
 app.get('/health', async (req, res) => {
