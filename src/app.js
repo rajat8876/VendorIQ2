@@ -3,10 +3,14 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 
 // Import database and Redis
 const { sequelize } = require('./config/database');
 const redis = require('./config/redis');
+
+// Import models to establish associations
+require('./models/associations');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -37,6 +41,9 @@ app.use(limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -93,10 +100,27 @@ app.get('/api', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: err.errors
+    });
+  }
+  
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Duplicate entry found',
+      errors: err.errors
+    });
+  }
+  
   res.status(500).json({
     success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   });
 });
 
