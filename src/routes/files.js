@@ -3,16 +3,28 @@
 
 const express = require('express');
 const router = express.Router();
+const { FileController, upload } = require('../controllers/fileController');
+const auth = require('../middleware/auth');
 
-// Test route to verify connectivity
+// All file routes require authentication
+router.use(auth);
+
+// File upload route
+router.post('/upload', upload.single('file'), FileController.upload);
+
+// File download/view route
+router.get('/:id', FileController.show);
+
+// File listing route
 router.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Files API is working',
-    endpoint: '/api/files'
+    message: 'File Upload System - Phase 8',
+    endpoints: {
+      upload: 'POST /api/files/upload',
+      download: 'GET /api/files/:id'
+    }
   });
 });
-
-// Implementation will be added in later phases
 
 module.exports = router;
