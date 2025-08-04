@@ -1,0 +1,67 @@
+{
+  "name": "vendoriq-backend",
+  "description": "VendorIQ B2B Platform Backend API",
+  "repository": "https://github.com/your-username/vendoriq-backend",
+  "logo": "https://your-logo-url.com/logo.png",
+  "keywords": ["node", "express", "mysql", "redis", "b2b", "api"],
+  "image": "heroku/nodejs",
+  "stack": "heroku-22",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "jawsdb:kitefin",
+      "as": "DATABASE"
+    },
+    {
+      "plan": "heroku-redis:mini",
+      "as": "REDIS"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Node environment",
+      "value": "production"
+    },
+    "JWT_SECRET": {
+      "description": "JWT secret key for authentication",
+      "generator": "secret"
+    },
+    "CORS_ORIGIN": {
+      "description": "Frontend URL for CORS",
+      "value": "https://your-frontend-domain.com"
+    },
+    "RAZORPAY_KEY_ID": {
+      "description": "Razorpay API Key ID",
+      "required": false
+    },
+    "RAZORPAY_KEY_SECRET": {
+      "description": "Razorpay API Key Secret",
+      "required": false
+    },
+    "TWILIO_ACCOUNT_SID": {
+      "description": "Twilio Account SID for SMS",
+      "required": false
+    },
+    "TWILIO_AUTH_TOKEN": {
+      "description": "Twilio Auth Token",
+      "required": false
+    },
+    "TWILIO_PHONE_NUMBER": {
+      "description": "Twilio Phone Number",
+      "required": false
+    }
+  },
+  "scripts": {
+    "postdeploy": "npm run migrate"
+  }
+}

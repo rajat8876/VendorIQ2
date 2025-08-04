@@ -8,7 +8,14 @@
     "dev": "nodemon src/app.js",
     "migrate": "npx sequelize-cli db:migrate",
     "seed": "npx sequelize-cli db:seed:all",
-    "test": "jest"
+    "test": "jest",
+    "deploy:heroku": "node deploy.js heroku",
+    "deploy:railway": "node deploy.js railway",
+    "deploy:docker": "node deploy.js docker",
+    "verify:local": "node verify-deployment.js http://localhost:3000",
+    "verify:deployment": "node verify-deployment.js",
+    "build": "echo 'No build step required for Node.js'",
+    "postinstall": "echo 'Installation completed successfully'"
   },
   "dependencies": {
     "bcrypt": "^5.1.0",
