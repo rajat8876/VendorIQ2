@@ -5,13 +5,23 @@ const { Subscription } = require('../models');
 
 class PaymentService {
   constructor() {
-    this.razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET
-    });
+    // Only initialize Razorpay if credentials are available
+    if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      this.razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET
+      });
+    } else {
+      console.warn('Razorpay credentials not found. Payment features will be disabled.');
+      this.razorpay = null;
+    }
   }
   
   async createOrder(amount, currency = 'INR', receipt, notes = {}) {
+    if (!this.razorpay) {
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.');
+    }
+    
     try {
       const order = await this.razorpay.orders.create({
         amount: amount * 100, // Amount in paise
@@ -27,6 +37,10 @@ class PaymentService {
   }
   
   verifyPaymentSignature(orderId, paymentId, signature) {
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay not configured. Please set RAZORPAY_KEY_SECRET environment variable.');
+    }
+    
     const body = orderId + '|' + paymentId;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
