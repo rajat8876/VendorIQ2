@@ -27,7 +27,6 @@
     "multer": "^1.4.5-lts.1",
     "redis": "^4.6.7",
     "razorpay": "^2.9.2",
-    "twilio": "^4.14.0",
     "nodemailer": "^6.9.4",
     "socket.io": "^4.7.2",
     "cors": "^2.8.5",
@@ -74,10 +73,14 @@ MAX_FILE_SIZE=10485760
 RAZORPAY_KEY_ID=your-razorpay-key
 RAZORPAY_KEY_SECRET=your-razorpay-secret
 
-# SMS Service
-TWILIO_ACCOUNT_SID=your-twilio-sid
-TWILIO_AUTH_TOKEN=your-twilio-token
-TWILIO_PHONE_NUMBER=your-twilio-phone
+# Email Service
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM_NAME=VendorIQ
+SMTP_FROM_EMAIL=noreply@vendoriq.com
 
 # Email
 SMTP_HOST=smtp.gmail.com
@@ -101,7 +104,7 @@ CORS_ORIGIN=http://localhost:5173
 - **File Upload**: Multer
 - **Real-time**: Socket.io
 - **Payment**: Razorpay SDK
-- **SMS**: Twilio/MSG91
+- **Email**: Nodemailer with SMTP
 
 ---
 
@@ -360,7 +363,7 @@ src/
 │   ├── payments.js
 │   └── admin.js
 ├── services/
-│   ├── smsService.js
+│   ├── emailService.js
 │   ├── paymentService.js
 │   └── notificationService.js
 ├── utils/
@@ -794,7 +797,7 @@ module.exports = router;
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { User } = require('../models');
-const smsService = require('../services/smsService');
+const emailService = require('../services/emailService');
 const redis = require('../config/redis');
 const { generateOTP } = require('../utils/helpers');
 
@@ -832,17 +835,17 @@ class AuthController {
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
       
-      await redis.setex(`otp_${phone}`, 300, JSON.stringify({
+      await redis.setex(`otp_${email}`, 300, JSON.stringify({
         otp,
         expires_at: expiresAt,
         user_id: user.id
       }));
       
-      await smsService.sendOTP(phone, otp);
+      await emailService.sendOTP(email, otp);
       
       res.status(201).json({
         success: true,
-        message: 'User registered successfully. OTP sent to your phone.',
+        message: 'User registered successfully. OTP sent to your email.',
         data: {
           user_id: user.id,
           otp_expires_at: expiresAt
@@ -859,24 +862,24 @@ class AuthController {
   
   async sendOtp(req, res) {
     try {
-      const { phone } = req.body;
+      const { email } = req.body;
       
-      if (!phone || !/^\+91[0-9]{10}$/.test(phone)) {
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({
           success: false,
-          message: 'Valid phone number is required'
+          message: 'Valid email address is required'
         });
       }
       
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       
-      await redis.setex(`otp_${phone}`, 300, JSON.stringify({
+      await redis.setex(`otp_${email}`, 300, JSON.stringify({
         otp,
         expires_at: expiresAt
       }));
       
-      await smsService.sendOTP(phone, otp);
+      await emailService.sendOTP(email, otp);
       
       res.json({
         success: true,
@@ -894,9 +897,9 @@ class AuthController {
   
   async verifyOtp(req, res) {
     try {
-      const { phone, otp } = req.body;
+      const { email, otp } = req.body;
       
-      const cachedOtp = await redis.get(`otp_${phone}`);
+      const cachedOtp = await redis.get(`otp_${email}`);
       
       if (!cachedOtp) {
         return res.status(400).json({
@@ -922,7 +925,7 @@ class AuthController {
       }
       
       // Find user
-      const user = await User.findOne({ where: { phone } });
+      const user = await User.findOne({ where: { email } });
       
       if (!user) {
         return res.status(404).json({
@@ -931,18 +934,18 @@ class AuthController {
         });
       }
       
-      // Update phone verification
-      await user.update({ phone_verified_at: new Date() });
+      // Update email verification
+      await user.update({ email_verified_at: new Date() });
       
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, phone: user.phone },
+        { userId: user.id, email: user.email },
         process.env.JWT_SECRET,
         { expiresIn: '7d' }
       );
       
       // Clear OTP
-      await redis.del(`otp_${phone}`);
+      await redis.del(`otp_${email}`);
       
       res.json({
         success: true,
@@ -1700,50 +1703,74 @@ module.exports = new PaymentController();
 
 ## PHASE 10: SERVICES SETUP
 
-### Step 17: SMS Service
+### Step 17: Email Service
 
 ```javascript
-// services/smsService.js
-const twilio = require('twilio');
+// services/emailService.js
+const nodemailer = require('nodemailer');
 
-class SMSService {
+class EmailService {
   constructor() {
-    this.client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
+    this.transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
   }
   
-  async sendOTP(phoneNumber, otp) {
+  async sendOTP(email, otp) {
     try {
-      const message = await this.client.messages.create({
-        body: `Your VendorIQ verification code is: ${otp}. Valid for 5 minutes.`,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phoneNumber
-      });
+      const mailOptions = {
+        from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to: email,
+        subject: 'VendorIQ - Email Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Email Verification</h2>
+            <p>Your VendorIQ verification code is:</p>
+            <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
+              <h1 style="color: #007bff; font-size: 32px; margin: 0;">${otp}</h1>
+            </div>
+            <p>This code will expire in 5 minutes.</p>
+            <p>If you didn't request this code, please ignore this email.</p>
+          </div>
+        `
+      };
       
-      return message;
+      const result = await this.transporter.sendMail(mailOptions);
+      return result;
     } catch (error) {
-      throw new Error(`SMS sending failed: ${error.message}`);
+      throw new Error(`Email sending failed: ${error.message}`);
     }
   }
   
-  async sendNotification(phoneNumber, message) {
+  async sendNotification(email, subject, message) {
     try {
-      const sms = await this.client.messages.create({
-        body: message,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phoneNumber
-      });
+      const mailOptions = {
+        from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+        to: email,
+        subject: subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">${subject}</h2>
+            <p>${message}</p>
+          </div>
+        `
+      };
       
-      return sms;
+      const result = await this.transporter.sendMail(mailOptions);
+      return result;
     } catch (error) {
-      throw new Error(`SMS notification failed: ${error.message}`);
+      throw new Error(`Email notification failed: ${error.message}`);
     }
   }
 }
 
-module.exports = new SMSService();
+module.exports = new EmailService();
 ```
 
 ### Step 18: Helper Utils

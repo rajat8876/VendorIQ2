@@ -4,7 +4,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { User, ServiceRequest, Subscription } = require('../models');
-const smsService = require('../services/smsService');
+const emailService = require('../services/emailService');
 const redis = require('../config/redis');
 const { generateOTP } = require('../utils/helpers');
 const { Op } = require('sequelize');
@@ -47,17 +47,17 @@ class AuthController {
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
       
-      await redis.setex(`otp_${phone}`, 300, JSON.stringify({
+      await redis.setex(`otp_${email}`, 300, JSON.stringify({
         otp,
         expires_at: expiresAt,
         user_id: user.id
       }));
       
-      await smsService.sendOTP(phone, otp);
+      await emailService.sendOTP(email, otp);
       
       res.status(201).json({
         success: true,
-        message: 'User registered successfully. OTP sent to your phone.',
+        message: 'User registered successfully. OTP sent to your email.',
         data: {
           user_id: user.id,
           otp_expires_at: expiresAt
@@ -74,12 +74,12 @@ class AuthController {
   
   async sendOtp(req, res) {
     try {
-      const { phone } = req.body;
+      const { email } = req.body;
       
-      if (!phone || !/^\+91[0-9]{10}$/.test(phone)) {
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({
           success: false,
-          message: 'Valid phone number is required'
+          message: 'Valid email address is required'
         });
       }
       
@@ -88,27 +88,27 @@ class AuthController {
       
       // Store OTP in Redis or fallback to in-memory storage
       if (redis.isConnected) {
-        await redis.setex(`otp_${phone}`, 300, JSON.stringify({
+        await redis.setex(`otp_${email}`, 300, JSON.stringify({
           otp,
           expires_at: expiresAt
         }));
       } else {
         // Fallback to in-memory storage
         console.log('⚠️  Redis unavailable, using in-memory OTP storage');
-        otpStorage.set(`otp_${phone}`, {
+        otpStorage.set(`otp_${email}`, {
           otp,
           expires_at: expiresAt
         });
         
         // Clean up expired OTPs from memory
         setTimeout(() => {
-          otpStorage.delete(`otp_${phone}`);
+          otpStorage.delete(`otp_${email}`);
         }, 300000); // 5 minutes
       }
       
-      await smsService.sendOTP(phone, otp);
+      await emailService.sendOTP(email, otp);
       
-      console.log(`📱 OTP generated for ${phone}: ${otp}`);
+      console.log(`📧 OTP generated for ${email}: ${otp}`);
       
       res.json({
         success: true,
@@ -126,13 +126,13 @@ class AuthController {
   
   async verifyOtp(req, res) {
     try {
-      const { phone, otp } = req.body;
+      const { email, otp } = req.body;
       
       // Try to get OTP from Redis first, then fallback to in-memory storage
       let otpData = null;
       
       if (redis.isConnected) {
-        const cachedOtp = await redis.get(`otp_${phone}`);
+        const cachedOtp = await redis.get(`otp_${email}`);
         if (cachedOtp) {
           otpData = JSON.parse(cachedOtp);
         }
@@ -140,7 +140,7 @@ class AuthController {
       
       // If not found in Redis or Redis unavailable, check in-memory storage
       if (!otpData) {
-        const memoryOtp = otpStorage.get(`otp_${phone}`);
+        const memoryOtp = otpStorage.get(`otp_${email}`);
         if (memoryOtp) {
           otpData = memoryOtp;
         }
@@ -168,7 +168,7 @@ class AuthController {
       }
       
       // Find user
-      const user = await User.findOne({ where: { phone } });
+      const user = await User.findOne({ where: { email } });
       
       if (!user) {
         return res.status(404).json({
@@ -177,21 +177,21 @@ class AuthController {
         });
       }
       
-      // Update phone verification
-      await user.update({ phone_verified_at: new Date() });
+      // Update email verification
+      await user.update({ email_verified_at: new Date() });
       
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, phone: user.phone },
+        { userId: user.id, email: user.email },
         process.env.JWT_SECRET,
         { expiresIn: '7d' }
       );
       
       // Clear OTP from both Redis and in-memory storage
       if (redis.isConnected) {
-        await redis.del(`otp_${phone}`);
+        await redis.del(`otp_${email}`);
       }
-      otpStorage.delete(`otp_${phone}`);
+      otpStorage.delete(`otp_${email}`);
       
       res.json({
         success: true,
@@ -263,16 +263,16 @@ class AuthController {
         const otp = generateOTP();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         
-        await redis.setex(`otp_${user.phone}`, 300, JSON.stringify({
+        await redis.setex(`otp_${user.email}`, 300, JSON.stringify({
           otp,
           expires_at: expiresAt
         }));
         
-        await smsService.sendOTP(user.phone, otp);
+        await emailService.sendOTP(user.email, otp);
         
         res.json({
           success: true,
-          message: 'OTP sent to your phone',
+          message: 'OTP sent to your email',
           expires_at: expiresAt
         });
       }

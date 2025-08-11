@@ -16,7 +16,7 @@ const registrationSchema = Joi.object({
 
 // OTP validation schema
 const otpSchema = Joi.object({
-  phone: Joi.string().pattern(/^\+91[0-9]{10}$/).required(),
+  email: Joi.string().email().required(),
   otp: Joi.string().length(6).pattern(/^[0-9]+$/).required()
 });
 
@@ -49,7 +49,7 @@ const validate = (schema) => {
 
 // Send OTP validation schema
 const sendOtpSchema = Joi.object({
-  phone: Joi.string().pattern(/^\+91[0-9]{10}$/).required()
+  email: Joi.string().email().required()
 });
 
 // Service Request validation schema
